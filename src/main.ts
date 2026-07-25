@@ -1,6 +1,7 @@
 import { FixedStepper } from "./app/fixedStepper";
 import { MAX_SPEED, MIN_SPEED, RunState } from "./app/runState";
 import { createSimulation } from "./domain/simulation";
+import { deserializeGenome, serializeGenome } from "./domain/genomeIo";
 import { StatsCollector } from "./domain/stats";
 import { Canvas2DRenderer } from "./render/canvasRenderer";
 import { type ChartSeries, drawChart } from "./render/chartRenderer";
@@ -138,6 +139,15 @@ function mountUi(): HTMLPreElement {
   regenButton.textContent = "Regenerate";
   regenButton.addEventListener("click", () => regenerate(Number(seedInput.value) || 0));
 
+  const exportButton = document.createElement("button");
+  exportButton.textContent = "Export champion";
+  exportButton.addEventListener("click", exportChampion);
+
+  const importInput = document.createElement("input");
+  importInput.type = "file";
+  importInput.accept = "application/json";
+  importInput.addEventListener("change", () => importGenome(importInput));
+
   const readout = document.createElement("pre");
 
   canvas.addEventListener("click", (event) => {
@@ -147,12 +157,43 @@ function mountUi(): HTMLPreElement {
     selectedId = pickForagerAt(sim.foragers, tileX, tileY)?.agent.id;
   });
 
-  for (const el of [pauseButton, speed, seedInput, regenButton, readout, chartCanvas, inspectorCanvas]) {
+  const controls = [pauseButton, speed, seedInput, regenButton, exportButton, importInput];
+  for (const el of [...controls, readout, chartCanvas, inspectorCanvas]) {
     panel.appendChild(el);
   }
   app.appendChild(canvas);
   app.appendChild(panel);
   return readout;
+}
+
+function exportChampion(): void {
+  const champion = sim.champion;
+  if (!champion) {
+    return;
+  }
+  const blob = new Blob([serializeGenome(champion.genome)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `champion-seed${seed}-tick${sim.tickCount}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function importGenome(input: HTMLInputElement): void {
+  const file = input.files?.[0];
+  if (!file) {
+    return;
+  }
+  file.text().then((json) => {
+    try {
+      sim.inject(deserializeGenome(json));
+    } catch (error) {
+      // eslint-disable-next-line no-alert
+      alert(String(error));
+    }
+    input.value = "";
+  });
 }
 
 function updateReadout(readout: HTMLPreElement): void {

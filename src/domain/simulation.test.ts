@@ -226,6 +226,25 @@ describe("Simulation.tick", () => {
     expect(mover.agent.energy).toBeLessThan(idle.agent.energy);
   });
 
+  it("reports the highest-fitness forager as champion and can inject a genome", () => {
+    const world = grasslandWorld(6, 6);
+    const young = idleForager(1, 2, 2, 10);
+    const old = idleForager(2, 4, 4, 80); // older => fitter
+    const sim = new Simulation({
+      world,
+      foragers: [young, old],
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: { minParentAge: 999 },
+      startId: 3,
+    });
+
+    expect(sim.champion?.agent.id).toBe(2);
+    sim.inject(createRandomGenome(createRng(9), newTracker(), DEFAULT_TOPOLOGY));
+    expect(sim.foragers.length).toBe(3);
+  });
+
   it("tracks at least one species once a population exists", () => {
     const world = grasslandWorld(6, 6);
     const sim = new Simulation({

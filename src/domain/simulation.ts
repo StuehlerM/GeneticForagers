@@ -1,6 +1,7 @@
 import { type Agent, drink, eat, isDead, metabolize, spendEnergy } from "./agent";
 import { DEFAULT_TOPOLOGY, type Topology } from "./brain";
 import { createForager, type Forager } from "./forager";
+import type { Genome } from "./genome";
 import {
   createRandomGenome,
   DEFAULT_MUTATION_RATE,
@@ -176,6 +177,26 @@ export class Simulation {
   /** Species id currently assigned to an agent, or undefined if unspeciated. */
   speciesOf(agentId: number): number | undefined {
     return this.species.assignmentOf(agentId);
+  }
+
+  /** The living forager with the highest fitness, or undefined if none. */
+  get champion(): Forager | undefined {
+    let best: Forager | undefined;
+    let bestFitness = Number.NEGATIVE_INFINITY;
+    for (const forager of this.population) {
+      const value = this.fitnessOf(forager);
+      if (value > bestFitness) {
+        bestFitness = value;
+        best = forager;
+      }
+    }
+    return best;
+  }
+
+  /** Adds a forager built from an imported genome at a random passable tile. */
+  inject(genome: Genome): void {
+    const spot = randomPassable(this.world, this.rng);
+    this.population.push(createForager({ id: this.nextId++, ...spot, genome }));
   }
 
   tick(): void {
