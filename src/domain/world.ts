@@ -42,15 +42,29 @@ export class World {
     return x >= 0 && y >= 0 && x < this.width && y < this.height;
   }
 
+  /** Wraps a horizontal coordinate into [0, width) (the world is a torus). */
+  wrapX(x: number): number {
+    return ((x % this.width) + this.width) % this.width;
+  }
+
+  /** Wraps a vertical coordinate into [0, height). */
+  wrapY(y: number): number {
+    return ((y % this.height) + this.height) % this.height;
+  }
+
+  /** Wraps an (x, y) pair onto the torus. Single source of truth for wrapping. */
+  wrap(x: number, y: number): { x: number; y: number } {
+    return { x: this.wrapX(x), y: this.wrapY(y) };
+  }
+
   tileAt(x: number, y: number): Tile {
-    if (!this.inBounds(x, y)) {
-      throw new Error(`World.tileAt: (${x}, ${y}) out of bounds`);
-    }
-    return this.tiles[y * this.width + x] as Tile;
+    const wx = this.wrapX(x);
+    const wy = this.wrapY(y);
+    return this.tiles[wy * this.width + wx] as Tile;
   }
 
   isPassable(x: number, y: number): boolean {
-    return this.inBounds(x, y) && getBiomeConfig(this.tileAt(x, y).biome).passable;
+    return getBiomeConfig(this.tileAt(x, y).biome).passable;
   }
 
   /** Advances plant growth on every tile by one tick, capped per biome. */

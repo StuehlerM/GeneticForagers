@@ -9,6 +9,7 @@ import {
 } from "./genome";
 import { nearestKPerception } from "./perception";
 import { createRng, type Rng } from "./rng";
+import { toroidalDelta } from "./torus";
 import { generateWorld, World } from "./world";
 
 const OUT_MOVE_X = 0;
@@ -181,8 +182,7 @@ export class Simulation {
       return;
     }
     while (steps-- > 0) {
-      const nx = forager.agent.x + dx;
-      const ny = forager.agent.y + dy;
+      const { x: nx, y: ny } = this.world.wrap(forager.agent.x + dx, forager.agent.y + dy);
       if (!this.world.isPassable(nx, ny)) {
         break;
       }
@@ -268,18 +268,17 @@ export class Simulation {
   }
 
   private areAdjacent(a: Agent, b: Agent): boolean {
-    return (
-      Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= MATE_RANGE
-    );
+    const dx = toroidalDelta(a.x, b.x, this.world.width);
+    const dy = toroidalDelta(a.y, b.y, this.world.height);
+    return Math.max(Math.abs(dx), Math.abs(dy)) <= MATE_RANGE;
   }
 
   private spawnNear(agent: Agent): { x: number; y: number } {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
-        const x = agent.x + dx;
-        const y = agent.y + dy;
-        if (this.world.isPassable(x, y)) {
-          return { x, y };
+        const spot = this.world.wrap(agent.x + dx, agent.y + dy);
+        if (this.world.isPassable(spot.x, spot.y)) {
+          return spot;
         }
       }
     }

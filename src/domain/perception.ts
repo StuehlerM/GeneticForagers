@@ -1,4 +1,5 @@
 import { type Agent, MAX_AGE, MAX_ENERGY, MAX_HEALTH, MAX_HYDRATION } from "./agent";
+import { toroidalDelta } from "./torus";
 import type { World } from "./world";
 
 /** Length of the input vector produced by {@link nearestKPerception}. */
@@ -33,7 +34,7 @@ export function nearestKPerception(
     sightRadius,
     (t) => t.biome === "water",
   );
-  const other = nearestAgent(agent, others, sightRadius);
+  const other = nearestAgent(agent, world, others, sightRadius);
 
   return [
     agent.energy / MAX_ENERGY,
@@ -59,15 +60,16 @@ function nearestTile(
   sightRadius: number,
   predicate: (tile: { biome: string; food: number }) => boolean,
 ): Bearing {
+  // On a torus, never scan past half the world or the same tile is seen twice.
   const radius = Math.floor(sightRadius);
+  const maxDx = Math.min(radius, Math.floor(world.width / 2));
+  const maxDy = Math.min(radius, Math.floor(world.height / 2));
   let best: Bearing = NOT_FOUND;
   let bestDist = Number.POSITIVE_INFINITY;
 
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const tx = x + dx;
-      const ty = y + dy;
-      if (!world.inBounds(tx, ty) || !predicate(world.tileAt(tx, ty))) {
+  for (let dy = -maxDy; dy <= maxDy; dy++) {
+    for (let dx = -maxDx; dx <= maxDx; dx++) {
+      if (!predicate(world.tileAt(x + dx, y + dy))) {
         continue;
       }
       const dist = Math.hypot(dx, dy);
@@ -82,6 +84,7 @@ function nearestTile(
 
 function nearestAgent(
   self: Agent,
+  world: World,
   others: readonly Agent[],
   sightRadius: number,
 ): Bearing {
@@ -92,8 +95,8 @@ function nearestAgent(
     if (other.id === self.id) {
       continue;
     }
-    const dx = other.x - self.x;
-    const dy = other.y - self.y;
+    const dx = toroidalDelta(self.x, other.x, world.width);
+    const dy = toroidalDelta(self.y, other.y, world.height);
     const dist = Math.hypot(dx, dy);
     if (dist <= sightRadius && dist < bestDist) {
       bestDist = dist;

@@ -73,4 +73,22 @@ describe("nearestKPerception", () => {
     expect(inputs[10] as number).toBeGreaterThan(0); // other is to the +x side
     expect(inputs[12] as number).toBeLessThan(1); // distance less than max
   });
+
+  it("sees an agent across the seam as near on the short side", () => {
+    const world = makeStripWorld(); // width 5
+    const self = createAgent({ id: 1, x: 0, y: 0 });
+    const other = createAgent({ id: 2, x: 4, y: 0 }); // one step left via the seam
+    const inputs = nearestKPerception(self, world, [self, other], SIGHT);
+    expect(inputs[10] as number).toBeLessThan(0); // short way is -x across the seam
+    expect(inputs[12] as number).toBeCloseTo(1 / SIGHT); // distance 1, not 4
+  });
+
+  it("sees food across the seam on the short side", () => {
+    const world = makeStripWorld(); // food at x=4
+    const agent = createAgent({ id: 1, x: 1, y: 0 });
+    const inputs = nearestKPerception(agent, world, [], SIGHT);
+    // food at x=4 is 2 steps left across the seam, not 3 steps right.
+    expect(inputs[4] as number).toBeLessThan(0);
+    expect(inputs[6] as number).toBeCloseTo(2 / SIGHT);
+  });
 });

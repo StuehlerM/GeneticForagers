@@ -67,10 +67,29 @@ describe("generateWorld", () => {
     }
   });
 
-  it("throws when reading out of bounds", () => {
+});
+
+describe("World wrapping (torus)", () => {
+  it("wraps coordinates into range, including negatives and overflow", () => {
     const world = makeWorld();
-    expect(() => world.tileAt(-1, 0)).toThrow();
-    expect(() => world.tileAt(WIDTH, 0)).toThrow();
+    expect(world.wrap(-1, -1)).toEqual({ x: WIDTH - 1, y: HEIGHT - 1 });
+    expect(world.wrap(WIDTH, HEIGHT)).toEqual({ x: 0, y: 0 });
+    expect(world.wrap(WIDTH + 3, -HEIGHT - 2)).toEqual({ x: 3, y: HEIGHT - 2 });
+  });
+
+  it("reads tiles through the seam instead of throwing", () => {
+    const world = makeWorld();
+    expect(world.tileAt(-1, 0)).toBe(world.tileAt(WIDTH - 1, 0));
+    expect(world.tileAt(WIDTH, HEIGHT)).toBe(world.tileAt(0, 0));
+  });
+
+  it("answers passability and consumes food through the seam", () => {
+    const world = makeWorld();
+    const { x, y } = findLandTile(world);
+    world.tileAt(x, y).food = 5;
+    expect(world.isPassable(x + WIDTH, y + HEIGHT)).toBe(world.isPassable(x, y));
+    expect(world.consumeFood(x + WIDTH, y, 2)).toBe(2);
+    expect(world.tileAt(x, y).food).toBe(3);
   });
 });
 

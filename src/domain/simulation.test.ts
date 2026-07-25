@@ -120,6 +120,52 @@ describe("Simulation.tick", () => {
     expect(b.agent.mateCooldown).toBe(5);
   });
 
+  it("wraps an agent that steps off an edge to the opposite edge", () => {
+    const world = grasslandWorld(6, 6);
+    const walker = createForager({
+      id: 1,
+      x: 5,
+      y: 0,
+      genome: createRandomGenome(createRng(1), DEFAULT_TOPOLOGY),
+      topology: DEFAULT_TOPOLOGY,
+    });
+    // Always drive +x at exactly one tile/tick: [moveX, moveY, eat, drink, mate].
+    const mover: Forager = {
+      ...walker,
+      brain: fixedBrain([1, 0, 0, 0, 0]),
+      traits: { ...walker.traits, maxSpeed: 1 },
+    };
+    const sim = new Simulation({
+      world,
+      foragers: [mover],
+      rng: createRng(1),
+      topology: DEFAULT_TOPOLOGY,
+      startId: 2,
+    });
+
+    sim.tick();
+    expect(mover.agent.x).toBe(0); // wrapped from x=5 (width 6) past the right edge
+    expect(mover.agent.y).toBe(0);
+  });
+
+  it("lets two fertile agents mate across the seam", () => {
+    const world = grasslandWorld(6, 6);
+    const a = mateForager(1, 0, 2);
+    const b = mateForager(2, 5, 2); // adjacent to a across the left/right seam
+    const sim = new Simulation({
+      world,
+      foragers: [a, b],
+      rng: createRng(1),
+      topology: DEFAULT_TOPOLOGY,
+      config: MATE_CONFIG,
+      startId: 3,
+    });
+
+    sim.tick();
+    expect(sim.totalBirths).toBe(1);
+    expect(sim.foragers.length).toBe(3);
+  });
+
   it("does not exceed the maximum population", () => {
     const world = grasslandWorld(6, 6);
     const a = mateForager(1, 2, 2);

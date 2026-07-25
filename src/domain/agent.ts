@@ -113,9 +113,8 @@ function isSatisfied(agent: Agent): boolean {
 
 function isNearWater(agent: Agent, world: World): boolean {
   for (const [dx, dy] of NEIGHBOUR_OFFSETS) {
-    const x = agent.x + dx;
-    const y = agent.y + dy;
-    if (world.inBounds(x, y) && world.tileAt(x, y).biome === "water") {
+    // tileAt wraps, so water across the seam is reachable on the torus.
+    if (world.tileAt(agent.x + dx, agent.y + dy).biome === "water") {
       return true;
     }
   }
