@@ -18,6 +18,11 @@ import {
 } from "./genome";
 import { type FitnessWeights, fitness, rouletteSelect } from "./fitness";
 import {
+  DEFAULT_ENVIRONMENT,
+  type EnvironmentState,
+  environmentAt,
+} from "./environment";
+import {
   createInnovationTracker,
   type InnovationTracker,
 } from "./neat/innovation";
@@ -158,6 +163,7 @@ export class Simulation {
   private readonly rng: Rng;
   private readonly species: SpeciesRegistry;
   private population: Forager[];
+  private env: EnvironmentState = environmentAt(0, DEFAULT_ENVIRONMENT);
   private nextId: number;
   private ticks = 0;
   private births = 0;
@@ -194,6 +200,11 @@ export class Simulation {
     return this.species.count;
   }
 
+  /** Current time-of-day / season state (for HUD + sight/regrowth effects). */
+  get environment(): EnvironmentState {
+    return this.env;
+  }
+
   /** Species id currently assigned to an agent, or undefined if unspeciated. */
   speciesOf(agentId: number): number | undefined {
     return this.species.assignmentOf(agentId);
@@ -221,7 +232,8 @@ export class Simulation {
 
   tick(): void {
     this.tracker.resetBatch();
-    this.world.regrow();
+    this.env = environmentAt(this.ticks, DEFAULT_ENVIRONMENT);
+    this.world.regrow(this.env.regrowMultiplier);
     const agents = this.population.map((f) => f.agent);
 
     for (const forager of this.population) {
@@ -236,8 +248,9 @@ export class Simulation {
   }
 
   private act(forager: Forager, agents: readonly Agent[]): void {
+    const sightRadius = forager.traits.sightRadius * this.env.sightMultiplier;
     const outputs = forager.brain.decide(
-      nearestKPerception(forager.agent, this.world, agents, forager.traits.sightRadius),
+      nearestKPerception(forager.agent, this.world, agents, sightRadius),
     );
     this.move(forager, outputs[OUT_MOVE_X] as number, outputs[OUT_MOVE_Y] as number);
     if ((outputs[OUT_EAT] as number) > this.config.actionThreshold) {

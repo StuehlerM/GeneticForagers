@@ -67,14 +67,17 @@ export class World {
     return getBiomeConfig(this.tileAt(x, y).biome).passable;
   }
 
-  /** Advances plant growth on every tile by one tick, capped per biome. */
-  regrow(): void {
+  /**
+   * Advances plant growth on every tile by one tick, capped per biome. The
+   * optional `multiplier` scales growth (e.g. seasonal fertility).
+   */
+  regrow(multiplier = 1): void {
     for (const tile of this.tiles) {
       const config = getBiomeConfig(tile.biome);
       if (config.regrowPerTick <= 0) {
         continue;
       }
-      tile.food = Math.min(config.maxFood, tile.food + config.regrowPerTick);
+      tile.food = Math.min(config.maxFood, tile.food + config.regrowPerTick * multiplier);
     }
   }
 

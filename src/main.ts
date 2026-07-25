@@ -205,6 +205,7 @@ function updateReadout(readout: HTMLPreElement): void {
     line("births", String(sim.totalBirths)),
     line("deaths", String(sim.totalDeaths)),
     line("species", String(sim.speciesCount)),
+    line("phase", `${sim.environment.isDay ? "day" : "night"} (light ${sim.environment.light.toFixed(2)})`),
     line("avg energy", s ? s.avgEnergy.toFixed(1) : "-"),
     line("avg speed", s ? s.avgSpeed.toFixed(2) : "-"),
     line("speed x", runState.speed.toFixed(2)),
