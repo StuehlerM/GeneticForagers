@@ -7,7 +7,7 @@ describe("DEFAULT_TOPOLOGY", () => {
     expect(DEFAULT_TOPOLOGY.inputs).toBe(PERCEPTION_SIZE);
   });
 
-  it("exposes the five agent actions as outputs", () => {
-    expect(DEFAULT_TOPOLOGY.outputs).toBe(5);
+  it("exposes the six agent actions as outputs", () => {
+    expect(DEFAULT_TOPOLOGY.outputs).toBe(6);
   });
 });

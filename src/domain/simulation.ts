@@ -1,4 +1,12 @@
-import { type Agent, drink, eat, isDead, metabolize, spendEnergy } from "./agent";
+import {
+  type Agent,
+  attack,
+  drink,
+  eat,
+  isDead,
+  metabolize,
+  spendEnergy,
+} from "./agent";
 import { DEFAULT_TOPOLOGY, type Topology } from "./brain";
 import { createForager, type Forager } from "./forager";
 import type { Genome } from "./genome";
@@ -17,13 +25,16 @@ import { firstHiddenNodeId } from "./neat/neatGenome";
 import { SpeciesRegistry } from "./neat/speciation";
 import { nearestKPerception } from "./perception";
 import { createRng, type Rng } from "./rng";
+import { toroidalDelta } from "./torus";
 import { generateWorld, World } from "./world";
 
 const OUT_MOVE_X = 0;
 const OUT_MOVE_Y = 1;
 const OUT_EAT = 2;
 const OUT_DRINK = 3;
+const OUT_ATTACK = 5;
 
+const ATTACK_RANGE = 1; // Chebyshev tiles at which an attack can land.
 const MAX_SPAWN_TRIES = 1000;
 
 export interface SimulationConfig {
@@ -31,6 +42,12 @@ export interface SimulationConfig {
   readonly moveThreshold: number;
   /** Energy spent per tile moved, before body-size scaling. */
   readonly moveEnergyCost: number;
+  /** Attack damage at equal size; scaled by attacker/target size ratio. */
+  readonly attackBaseDamage: number;
+  /** Fraction of attack damage the attacker regains as energy. */
+  readonly attackEnergyGain: number;
+  /** Energy an attacker spends per attack. */
+  readonly attackEnergyCost: number;
   /** Minimum age before a forager may be chosen as a parent. */
   readonly minParentAge: number;
   /** Population the birth manager tops the world up toward. */
@@ -53,6 +70,9 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   actionThreshold: 0.5,
   moveThreshold: 0.3,
   moveEnergyCost: 0.05,
+  attackBaseDamage: 20,
+  attackEnergyGain: 0.5,
+  attackEnergyCost: 2,
   minParentAge: 50,
   carryingCapacity: 300,
   birthsPerTick: 2,
@@ -226,6 +246,40 @@ export class Simulation {
     if ((outputs[OUT_DRINK] as number) > this.config.actionThreshold) {
       drink(forager.agent, this.world);
     }
+    if ((outputs[OUT_ATTACK] as number) > this.config.actionThreshold) {
+      this.attackStep(forager);
+    }
+  }
+
+  /** Predation: the attacker strikes the nearest forager within attack range. */
+  private attackStep(attacker: Forager): void {
+    const target = this.nearestTarget(attacker);
+    if (!target) {
+      return;
+    }
+    attack(attacker.agent, attacker.traits.size, target.agent, target.traits.size, {
+      baseDamage: this.config.attackBaseDamage,
+      energyGain: this.config.attackEnergyGain,
+      energyCost: this.config.attackEnergyCost,
+    });
+  }
+
+  private nearestTarget(attacker: Forager): Forager | undefined {
+    let best: Forager | undefined;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const other of this.population) {
+      if (other === attacker) {
+        continue;
+      }
+      const dx = toroidalDelta(attacker.agent.x, other.agent.x, this.world.width);
+      const dy = toroidalDelta(attacker.agent.y, other.agent.y, this.world.height);
+      const chebyshev = Math.max(Math.abs(dx), Math.abs(dy));
+      if (chebyshev <= ATTACK_RANGE && chebyshev < bestDist) {
+        bestDist = chebyshev;
+        best = other;
+      }
+    }
+    return best;
   }
 
   private move(forager: Forager, moveX: number, moveY: number): void {

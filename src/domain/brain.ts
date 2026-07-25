@@ -1,6 +1,6 @@
 import { PERCEPTION_SIZE } from "./perception";
 
-const OUTPUT_SIZE = 5; // moveX, moveY, eatDesire, drinkDesire, mateDesire
+const OUTPUT_SIZE = 6; // moveX, moveY, eatDesire, drinkDesire, mateDesire, attackDesire
 
 /** The input/output shape a brain must satisfy; NEAT grows the hidden structure. */
 export interface Topology {

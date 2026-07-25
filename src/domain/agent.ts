@@ -67,6 +67,35 @@ export function spendEnergy(agent: Agent, amount: number): void {
   agent.energy = clampLow(agent.energy - amount);
 }
 
+export interface AttackParams {
+  /** Damage at equal body size; scaled by the attacker/target size ratio. */
+  readonly baseDamage: number;
+  /** Fraction of damage dealt returned to the attacker as energy. */
+  readonly energyGain: number;
+  /** Energy the attacker spends to make the attack, hit or miss. */
+  readonly energyCost: number;
+}
+
+/**
+ * Resolves one attack: damage scales with attacker-vs-target size (so bigger
+ * bodies both hit harder and tank better), the target loses that health, and the
+ * attacker converts part of it to energy after paying the attack cost. Returns
+ * the damage dealt.
+ */
+export function attack(
+  attacker: Agent,
+  attackerSize: number,
+  target: Agent,
+  targetSize: number,
+  params: AttackParams,
+): number {
+  const damage = params.baseDamage * (attackerSize / targetSize);
+  target.health = clampLow(target.health - damage);
+  attacker.energy = Math.min(MAX_ENERGY, attacker.energy + damage * params.energyGain);
+  spendEnergy(attacker, params.energyCost);
+  return damage;
+}
+
 /** Advances an agent's passive needs by one tick (drain, health, ageing). */
 export function metabolize(agent: Agent): void {
   agent.energy = clampLow(agent.energy - BASE_ENERGY_DRAIN * agent.metabolism);

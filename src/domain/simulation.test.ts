@@ -45,7 +45,7 @@ function idleForager(id: number, x: number, y: number, age = 0): Forager {
   const genome = createRandomGenome(createRng(id), newTracker(), DEFAULT_TOPOLOGY);
   const base = createForager({ id, x, y, genome });
   base.agent.age = age;
-  return { ...base, brain: fixedBrain([0, 0, 0, 0, 0]) };
+  return { ...base, brain: fixedBrain([0, 0, 0, 0, 0, 0]) };
 }
 
 describe("chooseStep", () => {
@@ -200,6 +200,30 @@ describe("Simulation.tick", () => {
     expect(sim.totalBirths).toBe(1);
   });
 
+  it("lets an attacking forager damage an adjacent one", () => {
+    const world = grasslandWorld(8, 8);
+    const genome = () => createRandomGenome(createRng(1), newTracker(), DEFAULT_TOPOLOGY);
+    const attacker = createForager({ id: 1, x: 4, y: 4, genome: genome() });
+    const victim = createForager({ id: 2, x: 5, y: 4, genome: genome() }); // adjacent
+    // Attack output (index 5) high, no movement.
+    const predator: Forager = { ...attacker, brain: fixedBrain([0, 0, 0, 0, 0, 1]) };
+    const prey: Forager = { ...victim, brain: fixedBrain([0, 0, 0, 0, 0, 0]) };
+    const before = prey.agent.health;
+
+    const sim = new Simulation({
+      world,
+      foragers: [predator, prey],
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: { minParentAge: 999 },
+      startId: 3,
+    });
+
+    sim.tick();
+    expect(prey.agent.health).toBeLessThan(before);
+  });
+
   it("drains energy when a forager moves", () => {
     const world = grasslandWorld(8, 8);
     const build = (id: number, outputs: number[]): Forager => {
@@ -288,7 +312,7 @@ describe("Simulation.tick", () => {
     // Always drive +x at exactly one tile/tick: [moveX, moveY, eat, drink, mate].
     const mover: Forager = {
       ...walker,
-      brain: fixedBrain([1, 0, 0, 0, 0]),
+      brain: fixedBrain([1, 0, 0, 0, 0, 0]),
       traits: { ...walker.traits, maxSpeed: 1 },
     };
     const sim = new Simulation({

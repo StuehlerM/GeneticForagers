@@ -9,6 +9,7 @@ import {
   MAX_ENERGY,
   MAX_HEALTH,
   MAX_HYDRATION,
+  attack,
   metabolize,
   spendEnergy,
 } from "./agent";
@@ -101,6 +102,35 @@ describe("spendEnergy", () => {
     const agent = createAgent({ id: 1, x: 0, y: 0, energy: 5 });
     spendEnergy(agent, 20);
     expect(agent.energy).toBe(0);
+  });
+});
+
+describe("attack", () => {
+  const params = { baseDamage: 20, energyGain: 0.5, energyCost: 2 };
+
+  it("damages the target and feeds the attacker, net of the attack cost", () => {
+    const attacker = createAgent({ id: 1, x: 0, y: 0, energy: 50 });
+    const target = createAgent({ id: 2, x: 1, y: 0, health: 100 });
+    const damage = attack(attacker, 1, target, 1, params);
+    expect(damage).toBe(20);
+    expect(target.health).toBe(80);
+    expect(attacker.energy).toBe(50 + 20 * 0.5 - 2);
+  });
+
+  it("hits harder against smaller targets and softer against larger ones", () => {
+    const big = createAgent({ id: 1, x: 0, y: 0 });
+    const small = createAgent({ id: 2, x: 0, y: 0 });
+    const vsSmall = attack(big, 1.5, small, 0.5, params); // ratio 3
+    const vsBig = attack(big, 0.5, small, 1.5, params); // ratio 1/3
+    expect(vsSmall).toBeGreaterThan(params.baseDamage);
+    expect(vsBig).toBeLessThan(params.baseDamage);
+  });
+
+  it("never drives target health below zero", () => {
+    const attacker = createAgent({ id: 1, x: 0, y: 0 });
+    const target = createAgent({ id: 2, x: 0, y: 0, health: 5 });
+    attack(attacker, 2, target, 0.5, params); // huge damage
+    expect(target.health).toBe(0);
   });
 });
 
