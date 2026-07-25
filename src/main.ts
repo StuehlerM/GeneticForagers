@@ -3,11 +3,20 @@ import { MAX_SPEED, MIN_SPEED, RunState } from "./app/runState";
 import { createSimulation } from "./domain/simulation";
 import { StatsCollector } from "./domain/stats";
 import { Canvas2DRenderer } from "./render/canvasRenderer";
+import { type ChartSeries, drawChart } from "./render/chartRenderer";
 
 const WORLD_WIDTH = 128;
 const WORLD_HEIGHT = 128;
 const TILE_SIZE = 5;
 const POPULATION = 150;
+const CHART_WIDTH = 320;
+const CHART_HEIGHT = 120;
+
+const CHART_SERIES: ChartSeries[] = [
+  { key: "population", color: "#5ad15a", label: "population" },
+  { key: "species", color: "#d1a95a", label: "species" },
+  { key: "avgAge", color: "#5a9ad1", label: "avg age" },
+];
 
 const runState = new RunState();
 const stepper = new FixedStepper();
@@ -23,6 +32,8 @@ let sim = createSimulation({
 
 const canvas = createCanvas();
 const renderer = new Canvas2DRenderer(canvas.getContext("2d")!, TILE_SIZE);
+const chartCanvas = createChartCanvas();
+const chartCtx = chartCanvas.getContext("2d")!;
 const readout = mountUi();
 
 let lastTime = performance.now();
@@ -41,6 +52,7 @@ function frame(now: number): void {
   }
 
   renderer.render(sim);
+  drawChart(chartCtx, stats.history, CHART_SERIES);
   updateReadout(readout);
   requestAnimationFrame(frame);
 }
@@ -60,6 +72,13 @@ function createCanvas(): HTMLCanvasElement {
   const canvasEl = document.createElement("canvas");
   canvasEl.width = WORLD_WIDTH * TILE_SIZE;
   canvasEl.height = WORLD_HEIGHT * TILE_SIZE;
+  return canvasEl;
+}
+
+function createChartCanvas(): HTMLCanvasElement {
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = CHART_WIDTH;
+  canvasEl.height = CHART_HEIGHT;
   return canvasEl;
 }
 
@@ -98,7 +117,7 @@ function mountUi(): HTMLPreElement {
 
   const readout = document.createElement("pre");
 
-  for (const el of [pauseButton, speed, seedInput, regenButton, readout]) {
+  for (const el of [pauseButton, speed, seedInput, regenButton, readout, chartCanvas]) {
     panel.appendChild(el);
   }
   app.appendChild(canvas);
