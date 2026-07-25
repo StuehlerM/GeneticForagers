@@ -13,6 +13,7 @@ import {
   type InnovationTracker,
 } from "./neat/innovation";
 import { firstHiddenNodeId } from "./neat/neatGenome";
+import { SpeciesRegistry } from "./neat/speciation";
 import { nearestKPerception } from "./perception";
 import { createRng, type Rng } from "./rng";
 import { generateWorld, World } from "./world";
@@ -37,6 +38,10 @@ export interface SimulationConfig {
   readonly offspringFitnessWeight: number;
   /** How many random foragers to inject if the population dies out entirely. */
   readonly reseedCount: number;
+  /** Initial NEAT compatibility threshold for speciation. */
+  readonly speciationThreshold: number;
+  /** Species count the dynamic threshold aims for. */
+  readonly targetSpeciesCount: number;
   readonly mutationRate: number;
   readonly mutationStrength: number;
 }
@@ -50,6 +55,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   foodFitnessWeight: 0.1,
   offspringFitnessWeight: 5,
   reseedCount: 8,
+  speciationThreshold: 3,
+  targetSpeciesCount: 6,
   mutationRate: DEFAULT_MUTATION_RATE,
   mutationStrength: DEFAULT_MUTATION_STRENGTH,
 };
@@ -125,6 +132,7 @@ export class Simulation {
   private readonly tracker: InnovationTracker;
   private readonly topology: Topology;
   private readonly rng: Rng;
+  private readonly species: SpeciesRegistry;
   private population: Forager[];
   private nextId: number;
   private ticks = 0;
@@ -139,6 +147,7 @@ export class Simulation {
     this.topology = init.topology;
     this.nextId = init.startId;
     this.config = { ...DEFAULT_CONFIG, ...init.config };
+    this.species = new SpeciesRegistry(this.config.speciationThreshold);
   }
 
   get foragers(): readonly Forager[] {
@@ -157,6 +166,10 @@ export class Simulation {
     return this.deaths;
   }
 
+  get speciesCount(): number {
+    return this.species.count;
+  }
+
   tick(): void {
     this.tracker.resetBatch();
     this.world.regrow();
@@ -167,6 +180,7 @@ export class Simulation {
       metabolize(forager.agent);
     }
 
+    this.speciatePopulation();
     this.reproduceStep();
     this.cullDead();
     this.ticks += 1;
@@ -228,10 +242,12 @@ export class Simulation {
       return;
     }
 
+    const groups = this.eligibleGroups(eligible);
     const newborns: Forager[] = [];
     for (let i = 0; i < slots; i++) {
-      const parentA = rouletteSelect(this.rng, eligible, (f) => this.fitnessOf(f));
-      const parentB = this.pickMate(eligible, parentA);
+      const group = rouletteSelect(this.rng, groups, (g) => g.meanFitness);
+      const parentA = rouletteSelect(this.rng, group.members, (f) => this.fitnessOf(f));
+      const parentB = this.pickMate(group.members, parentA);
       newborns.push(this.makeChild(parentA, parentB));
       parentA.offspring += 1;
       if (parentB !== parentA) {
@@ -240,6 +256,38 @@ export class Simulation {
       this.births += 1;
     }
     this.population.push(...newborns);
+  }
+
+  private speciatePopulation(): void {
+    this.species.speciate(
+      this.population.map((f) => ({
+        id: f.agent.id,
+        genome: f.genome.brain,
+        fitness: this.fitnessOf(f),
+      })),
+    );
+    this.species.adjustThreshold(this.config.targetSpeciesCount);
+  }
+
+  /** Eligible parents grouped by species, each with its mean (shared) fitness. */
+  private eligibleGroups(
+    eligible: readonly Forager[],
+  ): { members: Forager[]; meanFitness: number }[] {
+    const bySpecies = new Map<number, Forager[]>();
+    for (const forager of eligible) {
+      const speciesId = this.species.assignmentOf(forager.agent.id) ?? 0;
+      const members = bySpecies.get(speciesId);
+      if (members) {
+        members.push(forager);
+      } else {
+        bySpecies.set(speciesId, [forager]);
+      }
+    }
+    return [...bySpecies.values()].map((members) => ({
+      members,
+      meanFitness:
+        members.reduce((sum, f) => sum + this.fitnessOf(f), 0) / members.length,
+    }));
   }
 
   /** Second parent: another fitness-selected forager, or self when alone. */

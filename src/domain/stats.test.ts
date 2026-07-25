@@ -21,6 +21,7 @@ function source(foragers: Forager[], overrides: Partial<StatsSource> = {}): Stat
     tickCount: 0,
     totalBirths: 0,
     totalDeaths: 0,
+    speciesCount: 0,
     foragers,
     ...overrides,
   };
@@ -49,6 +50,11 @@ describe("sampleStats", () => {
     const sample = sampleStats(source([forager(1)], { totalBirths: 5, totalDeaths: 3 }));
     expect(sample.births).toBe(5);
     expect(sample.deaths).toBe(3);
+  });
+
+  it("records the current species count", () => {
+    const sample = sampleStats(source([forager(1)], { speciesCount: 4 }));
+    expect(sample.species).toBe(4);
   });
 });
 

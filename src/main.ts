@@ -114,6 +114,7 @@ function updateReadout(readout: HTMLPreElement): void {
     line("population", String(sim.foragers.length)),
     line("births", String(sim.totalBirths)),
     line("deaths", String(sim.totalDeaths)),
+    line("species", String(sim.speciesCount)),
     line("avg energy", s ? s.avgEnergy.toFixed(1) : "-"),
     line("avg speed", s ? s.avgSpeed.toFixed(2) : "-"),
     line("speed x", runState.speed.toFixed(2)),

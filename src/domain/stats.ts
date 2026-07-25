@@ -5,6 +5,7 @@ export interface StatsSource {
   readonly tickCount: number;
   readonly totalBirths: number;
   readonly totalDeaths: number;
+  readonly speciesCount: number;
   readonly foragers: readonly Forager[];
 }
 
@@ -14,6 +15,7 @@ export interface StatsSample {
   readonly population: number;
   readonly births: number;
   readonly deaths: number;
+  readonly species: number;
   readonly avgEnergy: number;
   readonly avgHydration: number;
   readonly avgHealth: number;
@@ -53,6 +55,7 @@ export function sampleStats(source: StatsSource): StatsSample {
     population: n,
     births: source.totalBirths,
     deaths: source.totalDeaths,
+    species: source.speciesCount,
     avgEnergy: mean(energy),
     avgHydration: mean(hydration),
     avgHealth: mean(health),

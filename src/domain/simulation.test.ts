@@ -83,6 +83,7 @@ describe("createSimulation", () => {
     // filled the world toward carrying capacity and it is still alive.
     expect(sim.foragers.length).toBeGreaterThanOrEqual(30);
     expect(sim.totalBirths).toBeGreaterThan(20);
+    expect(sim.speciesCount).toBeGreaterThanOrEqual(1);
   });
 
   it("is deterministic: same seed yields identical state after ticks", () => {
@@ -197,6 +198,22 @@ describe("Simulation.tick", () => {
     sim.tick();
     expect(sim.foragers.length).toBe(2);
     expect(sim.totalBirths).toBe(1);
+  });
+
+  it("tracks at least one species once a population exists", () => {
+    const world = grasslandWorld(6, 6);
+    const sim = new Simulation({
+      world,
+      foragers: [idleForager(1, 2, 2, 60), idleForager(2, 4, 4, 60)],
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: BIRTH_CONFIG,
+      startId: 3,
+    });
+
+    sim.tick();
+    expect(sim.speciesCount).toBeGreaterThanOrEqual(1);
   });
 
   it("reseeds fresh foragers when the population dies out", () => {
