@@ -3,12 +3,17 @@ import { MAX_ENERGY } from "./agent";
 import { DEFAULT_TOPOLOGY } from "./brain";
 import { createForager, type Forager } from "./forager";
 import { createRandomGenome } from "./genome";
+import { createInnovationTracker } from "./neat/innovation";
+import { firstHiddenNodeId } from "./neat/neatGenome";
 import { createRng } from "./rng";
 import { sampleStats, type StatsSource, StatsCollector } from "./stats";
 
 function forager(id: number): Forager {
-  const genome = createRandomGenome(createRng(id), DEFAULT_TOPOLOGY);
-  return createForager({ id, x: 0, y: 0, genome, topology: DEFAULT_TOPOLOGY });
+  const tracker = createInnovationTracker(
+    firstHiddenNodeId(DEFAULT_TOPOLOGY.inputs, DEFAULT_TOPOLOGY.outputs),
+  );
+  const genome = createRandomGenome(createRng(id), tracker, DEFAULT_TOPOLOGY);
+  return createForager({ id, x: 0, y: 0, genome });
 }
 
 function source(foragers: Forager[], overrides: Partial<StatsSource> = {}): StatsSource {

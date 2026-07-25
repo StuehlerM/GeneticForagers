@@ -7,6 +7,11 @@ import {
   DEFAULT_MUTATION_STRENGTH,
   reproduce,
 } from "./genome";
+import {
+  createInnovationTracker,
+  type InnovationTracker,
+} from "./neat/innovation";
+import { firstHiddenNodeId } from "./neat/neatGenome";
 import { nearestKPerception } from "./perception";
 import { createRng, type Rng } from "./rng";
 import { toroidalDelta } from "./torus";
@@ -51,7 +56,7 @@ export interface SimulationInit {
   readonly world: World;
   readonly foragers: Forager[];
   readonly rng: Rng;
-  readonly topology: Topology;
+  readonly tracker: InnovationTracker;
   readonly startId: number;
   readonly config?: Partial<SimulationConfig>;
 }
@@ -81,6 +86,9 @@ export function chooseStep(
 export function createSimulation(options: CreateSimulationOptions): Simulation {
   const topology = options.topology ?? DEFAULT_TOPOLOGY;
   const rng = createRng(options.seed);
+  const tracker = createInnovationTracker(
+    firstHiddenNodeId(topology.inputs, topology.outputs),
+  );
   const world = generateWorld({
     seed: options.seed,
     width: options.width,
@@ -91,15 +99,15 @@ export function createSimulation(options: CreateSimulationOptions): Simulation {
   let nextId = 1;
   for (let i = 0; i < options.population; i++) {
     const spot = randomPassable(world, rng);
-    const genome = createRandomGenome(rng, topology);
-    foragers.push(createForager({ id: nextId++, ...spot, genome, topology }));
+    const genome = createRandomGenome(rng, tracker, topology);
+    foragers.push(createForager({ id: nextId++, ...spot, genome }));
   }
 
   const init: SimulationInit = {
     world,
     foragers,
     rng,
-    topology,
+    tracker,
     startId: nextId,
     ...(options.config ? { config: options.config } : {}),
   };
@@ -110,7 +118,7 @@ export function createSimulation(options: CreateSimulationOptions): Simulation {
 export class Simulation {
   readonly world: World;
   private readonly config: SimulationConfig;
-  private readonly topology: Topology;
+  private readonly tracker: InnovationTracker;
   private readonly rng: Rng;
   private population: Forager[];
   private nextId: number;
@@ -122,7 +130,7 @@ export class Simulation {
     this.world = init.world;
     this.population = init.foragers;
     this.rng = init.rng;
-    this.topology = init.topology;
+    this.tracker = init.tracker;
     this.nextId = init.startId;
     this.config = { ...DEFAULT_CONFIG, ...init.config };
   }
@@ -144,6 +152,7 @@ export class Simulation {
   }
 
   tick(): void {
+    this.tracker.resetBatch();
     this.world.regrow();
     const agents = this.population.map((f) => f.agent);
 
@@ -226,13 +235,16 @@ export class Simulation {
   private makeChild(parentA: Forager, parentB: Forager): Forager {
     const genome = reproduce(
       this.rng,
+      this.tracker,
       parentA.genome,
       parentB.genome,
+      parentA.agent.age,
+      parentB.agent.age,
       this.config.mutationRate,
       this.config.mutationStrength,
     );
     const spot = this.spawnNear(parentA.agent);
-    return createForager({ id: this.nextId++, ...spot, genome, topology: this.topology });
+    return createForager({ id: this.nextId++, ...spot, genome });
   }
 
   private cullDead(): void {

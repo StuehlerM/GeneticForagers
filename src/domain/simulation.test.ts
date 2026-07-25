@@ -3,6 +3,8 @@ import { type BiomeType, getBiomeConfig } from "./biome";
 import { DEFAULT_TOPOLOGY } from "./brain";
 import { createForager, type Forager } from "./forager";
 import { createRandomGenome } from "./genome";
+import { createInnovationTracker, type InnovationTracker } from "./neat/innovation";
+import { firstHiddenNodeId } from "./neat/neatGenome";
 import { createRng } from "./rng";
 import {
   chooseStep,
@@ -33,9 +35,15 @@ function fixedBrain(outputs: number[]): { decide: () => number[] } {
   return { decide: () => outputs };
 }
 
+function newTracker(): InnovationTracker {
+  return createInnovationTracker(
+    firstHiddenNodeId(DEFAULT_TOPOLOGY.inputs, DEFAULT_TOPOLOGY.outputs),
+  );
+}
+
 function mateForager(id: number, x: number, y: number): Forager {
-  const genome = createRandomGenome(createRng(id), DEFAULT_TOPOLOGY);
-  const base = createForager({ id, x, y, genome, topology: DEFAULT_TOPOLOGY });
+  const genome = createRandomGenome(createRng(id), newTracker(), DEFAULT_TOPOLOGY);
+  const base = createForager({ id, x, y, genome });
   // No movement, always want to mate: [moveX, moveY, eat, drink, mate].
   return { ...base, brain: fixedBrain([0, 0, 0, 0, 1]) };
 }
@@ -91,7 +99,7 @@ describe("Simulation.tick", () => {
       world,
       foragers: [dead],
       rng: createRng(1),
-      topology: DEFAULT_TOPOLOGY,
+      tracker: newTracker(),
       startId: 2,
     });
 
@@ -108,7 +116,7 @@ describe("Simulation.tick", () => {
       world,
       foragers: [a, b],
       rng: createRng(1),
-      topology: DEFAULT_TOPOLOGY,
+      tracker: newTracker(),
       config: MATE_CONFIG,
       startId: 3,
     });
@@ -126,8 +134,7 @@ describe("Simulation.tick", () => {
       id: 1,
       x: 5,
       y: 0,
-      genome: createRandomGenome(createRng(1), DEFAULT_TOPOLOGY),
-      topology: DEFAULT_TOPOLOGY,
+      genome: createRandomGenome(createRng(1), newTracker(), DEFAULT_TOPOLOGY),
     });
     // Always drive +x at exactly one tile/tick: [moveX, moveY, eat, drink, mate].
     const mover: Forager = {
@@ -139,7 +146,7 @@ describe("Simulation.tick", () => {
       world,
       foragers: [mover],
       rng: createRng(1),
-      topology: DEFAULT_TOPOLOGY,
+      tracker: newTracker(),
       startId: 2,
     });
 
@@ -156,7 +163,7 @@ describe("Simulation.tick", () => {
       world,
       foragers: [a, b],
       rng: createRng(1),
-      topology: DEFAULT_TOPOLOGY,
+      tracker: newTracker(),
       config: MATE_CONFIG,
       startId: 3,
     });
@@ -174,7 +181,7 @@ describe("Simulation.tick", () => {
       world,
       foragers: [a, b],
       rng: createRng(1),
-      topology: DEFAULT_TOPOLOGY,
+      tracker: newTracker(),
       config: { ...MATE_CONFIG, maxPopulation: 2 },
       startId: 3,
     });
