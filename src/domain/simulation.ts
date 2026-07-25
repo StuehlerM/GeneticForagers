@@ -7,6 +7,7 @@ import {
   DEFAULT_MUTATION_STRENGTH,
   reproduce,
 } from "./genome";
+import { type FitnessWeights, fitness, rouletteSelect } from "./fitness";
 import {
   createInnovationTracker,
   type InnovationTracker,
@@ -14,40 +15,41 @@ import {
 import { firstHiddenNodeId } from "./neat/neatGenome";
 import { nearestKPerception } from "./perception";
 import { createRng, type Rng } from "./rng";
-import { toroidalDelta } from "./torus";
 import { generateWorld, World } from "./world";
 
 const OUT_MOVE_X = 0;
 const OUT_MOVE_Y = 1;
 const OUT_EAT = 2;
 const OUT_DRINK = 3;
-const OUT_MATE = 4;
 
-const MATE_RANGE = 1; // Chebyshev distance at which two agents can mate.
 const MAX_SPAWN_TRIES = 1000;
 
 export interface SimulationConfig {
-  readonly adultAge: number;
-  readonly mateEnergyMin: number;
-  readonly mateHydrationMin: number;
-  readonly mateEnergyCost: number;
-  readonly mateCooldown: number;
   readonly actionThreshold: number;
   readonly moveThreshold: number;
-  readonly maxPopulation: number;
+  /** Minimum age before a forager may be chosen as a parent. */
+  readonly minParentAge: number;
+  /** Population the birth manager tops the world up toward. */
+  readonly carryingCapacity: number;
+  /** Maximum offspring created per tick. */
+  readonly birthsPerTick: number;
+  readonly foodFitnessWeight: number;
+  readonly offspringFitnessWeight: number;
+  /** How many random foragers to inject if the population dies out entirely. */
+  readonly reseedCount: number;
   readonly mutationRate: number;
   readonly mutationStrength: number;
 }
 
 export const DEFAULT_CONFIG: SimulationConfig = {
-  adultAge: 100,
-  mateEnergyMin: 60,
-  mateHydrationMin: 40,
-  mateEnergyCost: 30,
-  mateCooldown: 200,
   actionThreshold: 0.5,
   moveThreshold: 0.3,
-  maxPopulation: 400,
+  minParentAge: 50,
+  carryingCapacity: 300,
+  birthsPerTick: 2,
+  foodFitnessWeight: 0.1,
+  offspringFitnessWeight: 5,
+  reseedCount: 8,
   mutationRate: DEFAULT_MUTATION_RATE,
   mutationStrength: DEFAULT_MUTATION_STRENGTH,
 };
@@ -57,6 +59,7 @@ export interface SimulationInit {
   readonly foragers: Forager[];
   readonly rng: Rng;
   readonly tracker: InnovationTracker;
+  readonly topology: Topology;
   readonly startId: number;
   readonly config?: Partial<SimulationConfig>;
 }
@@ -108,6 +111,7 @@ export function createSimulation(options: CreateSimulationOptions): Simulation {
     foragers,
     rng,
     tracker,
+    topology,
     startId: nextId,
     ...(options.config ? { config: options.config } : {}),
   };
@@ -119,6 +123,7 @@ export class Simulation {
   readonly world: World;
   private readonly config: SimulationConfig;
   private readonly tracker: InnovationTracker;
+  private readonly topology: Topology;
   private readonly rng: Rng;
   private population: Forager[];
   private nextId: number;
@@ -131,6 +136,7 @@ export class Simulation {
     this.population = init.foragers;
     this.rng = init.rng;
     this.tracker = init.tracker;
+    this.topology = init.topology;
     this.nextId = init.startId;
     this.config = { ...DEFAULT_CONFIG, ...init.config };
   }
@@ -157,7 +163,6 @@ export class Simulation {
     const agents = this.population.map((f) => f.agent);
 
     for (const forager of this.population) {
-      this.decrementCooldown(forager.agent);
       this.act(forager, agents);
       metabolize(forager.agent);
     }
@@ -173,12 +178,11 @@ export class Simulation {
     );
     this.move(forager, outputs[OUT_MOVE_X] as number, outputs[OUT_MOVE_Y] as number);
     if ((outputs[OUT_EAT] as number) > this.config.actionThreshold) {
-      eat(forager.agent, this.world);
+      forager.foodEaten += eat(forager.agent, this.world);
     }
     if ((outputs[OUT_DRINK] as number) > this.config.actionThreshold) {
       drink(forager.agent, this.world);
     }
-    forager.wantsMate = (outputs[OUT_MATE] as number) > this.config.actionThreshold;
   }
 
   private move(forager: Forager, moveX: number, moveY: number): void {
@@ -200,36 +204,71 @@ export class Simulation {
     }
   }
 
+  /**
+   * System-driven, fitness-weighted reproduction (ADR 0001): tops the population
+   * up toward the carrying capacity by breeding fitness-selected parents, and
+   * reseeds fresh random brains if the world ever empties.
+   */
   private reproduceStep(): void {
-    const fertile = this.population.filter((f) => f.wantsMate && this.isFertile(f.agent));
-    const paired = new Set<number>();
-    const newborns: Forager[] = [];
-
-    for (const parentA of fertile) {
-      if (paired.has(parentA.agent.id)) {
-        continue;
-      }
-      if (this.population.length + newborns.length >= this.config.maxPopulation) {
-        break;
-      }
-      const parentB = fertile.find(
-        (candidate) =>
-          candidate.agent.id !== parentA.agent.id &&
-          !paired.has(candidate.agent.id) &&
-          this.areAdjacent(parentA.agent, candidate.agent),
-      );
-      if (!parentB) {
-        continue;
-      }
-      paired.add(parentA.agent.id);
-      paired.add(parentB.agent.id);
-      newborns.push(this.makeChild(parentA, parentB));
-      this.payMatingCost(parentA.agent);
-      this.payMatingCost(parentB.agent);
-      this.births += 1;
+    if (this.population.length === 0) {
+      this.reseed();
+      return;
+    }
+    const slots = Math.min(
+      this.config.birthsPerTick,
+      this.config.carryingCapacity - this.population.length,
+    );
+    if (slots <= 0) {
+      return;
+    }
+    const eligible = this.population.filter(
+      (f) => f.agent.age >= this.config.minParentAge,
+    );
+    if (eligible.length === 0) {
+      return;
     }
 
+    const newborns: Forager[] = [];
+    for (let i = 0; i < slots; i++) {
+      const parentA = rouletteSelect(this.rng, eligible, (f) => this.fitnessOf(f));
+      const parentB = this.pickMate(eligible, parentA);
+      newborns.push(this.makeChild(parentA, parentB));
+      parentA.offspring += 1;
+      if (parentB !== parentA) {
+        parentB.offspring += 1;
+      }
+      this.births += 1;
+    }
     this.population.push(...newborns);
+  }
+
+  /** Second parent: another fitness-selected forager, or self when alone. */
+  private pickMate(eligible: readonly Forager[], parentA: Forager): Forager {
+    if (eligible.length === 1) {
+      return parentA;
+    }
+    const others = eligible.filter((f) => f !== parentA);
+    return rouletteSelect(this.rng, others, (f) => this.fitnessOf(f));
+  }
+
+  private reseed(): void {
+    for (let i = 0; i < this.config.reseedCount; i++) {
+      const spot = randomPassable(this.world, this.rng);
+      const genome = createRandomGenome(this.rng, this.tracker, this.topology);
+      this.population.push(createForager({ id: this.nextId++, ...spot, genome }));
+      this.births += 1;
+    }
+  }
+
+  private fitnessOf(forager: Forager): number {
+    return fitness(forager, this.fitnessWeights());
+  }
+
+  private fitnessWeights(): FitnessWeights {
+    return {
+      foodWeight: this.config.foodFitnessWeight,
+      offspringWeight: this.config.offspringFitnessWeight,
+    };
   }
 
   private makeChild(parentA: Forager, parentB: Forager): Forager {
@@ -238,8 +277,8 @@ export class Simulation {
       this.tracker,
       parentA.genome,
       parentB.genome,
-      parentA.agent.age,
-      parentB.agent.age,
+      this.fitnessOf(parentA),
+      this.fitnessOf(parentB),
       this.config.mutationRate,
       this.config.mutationStrength,
     );
@@ -257,32 +296,6 @@ export class Simulation {
       }
     }
     this.population = survivors;
-  }
-
-  private isFertile(agent: Agent): boolean {
-    return (
-      agent.age >= this.config.adultAge &&
-      agent.energy >= this.config.mateEnergyMin &&
-      agent.hydration >= this.config.mateHydrationMin &&
-      agent.mateCooldown === 0
-    );
-  }
-
-  private payMatingCost(agent: Agent): void {
-    agent.energy = Math.max(0, agent.energy - this.config.mateEnergyCost);
-    agent.mateCooldown = this.config.mateCooldown;
-  }
-
-  private decrementCooldown(agent: Agent): void {
-    if (agent.mateCooldown > 0) {
-      agent.mateCooldown -= 1;
-    }
-  }
-
-  private areAdjacent(a: Agent, b: Agent): boolean {
-    const dx = toroidalDelta(a.x, b.x, this.world.width);
-    const dy = toroidalDelta(a.y, b.y, this.world.height);
-    return Math.max(Math.abs(dx), Math.abs(dy)) <= MATE_RANGE;
   }
 
   private spawnNear(agent: Agent): { x: number; y: number } {

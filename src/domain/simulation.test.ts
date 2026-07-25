@@ -22,12 +22,11 @@ function grasslandWorld(w: number, h: number): World {
   return new World(w, h, tiles);
 }
 
-const MATE_CONFIG: Partial<SimulationConfig> = {
-  adultAge: 0,
-  mateEnergyMin: 0,
-  mateHydrationMin: 0,
-  mateEnergyCost: 10,
-  mateCooldown: 5,
+/** Old enough to parent, no capacity pressure: a minimal birth-friendly config. */
+const BIRTH_CONFIG: Partial<SimulationConfig> = {
+  minParentAge: 0,
+  birthsPerTick: 1,
+  carryingCapacity: 10,
 };
 
 /** A brain that always outputs the given fixed action vector. */
@@ -41,11 +40,12 @@ function newTracker(): InnovationTracker {
   );
 }
 
-function mateForager(id: number, x: number, y: number): Forager {
+/** An idle forager (no movement/actions) at a given age, for reproduction tests. */
+function idleForager(id: number, x: number, y: number, age = 0): Forager {
   const genome = createRandomGenome(createRng(id), newTracker(), DEFAULT_TOPOLOGY);
   const base = createForager({ id, x, y, genome });
-  // No movement, always want to mate: [moveX, moveY, eat, drink, mate].
-  return { ...base, brain: fixedBrain([0, 0, 0, 0, 1]) };
+  base.agent.age = age;
+  return { ...base, brain: fixedBrain([0, 0, 0, 0, 0]) };
 }
 
 describe("chooseStep", () => {
@@ -66,6 +66,23 @@ describe("createSimulation", () => {
     for (const f of sim.foragers) {
       expect(sim.world.isPassable(f.agent.x, f.agent.y)).toBe(true);
     }
+  });
+
+  it("keeps a living, breeding population over a long run (no early extinction)", () => {
+    const sim = createSimulation({
+      seed: 7,
+      width: 32,
+      height: 32,
+      population: 15,
+      config: { carryingCapacity: 40 },
+    });
+    for (let i = 0; i < 400; i++) {
+      sim.tick();
+    }
+    // Random brains no longer go extinct before breeding: the birth manager
+    // filled the world toward carrying capacity and it is still alive.
+    expect(sim.foragers.length).toBeGreaterThanOrEqual(30);
+    expect(sim.totalBirths).toBeGreaterThan(20);
   });
 
   it("is deterministic: same seed yields identical state after ticks", () => {
@@ -91,7 +108,7 @@ describe("Simulation.tick", () => {
 
   it("removes dead agents and counts the deaths", () => {
     const world = grasslandWorld(6, 6);
-    const dead = mateForager(1, 2, 2);
+    const dead = idleForager(1, 2, 2);
     dead.agent.health = 0;
     dead.agent.energy = 0; // starved: no health regen keeps it dead
     dead.agent.hydration = 0;
@@ -100,6 +117,7 @@ describe("Simulation.tick", () => {
       foragers: [dead],
       rng: createRng(1),
       tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
       startId: 2,
     });
 
@@ -108,24 +126,93 @@ describe("Simulation.tick", () => {
     expect(sim.totalDeaths).toBe(1);
   });
 
-  it("produces offspring when two fertile agents mate", () => {
+  it("breeds offspring from fitness-selected parents once they are old enough", () => {
     const world = grasslandWorld(6, 6);
-    const a = mateForager(1, 2, 2);
-    const b = mateForager(2, 3, 2); // adjacent
+    const a = idleForager(1, 2, 2, 60);
+    const b = idleForager(2, 4, 4, 60);
     const sim = new Simulation({
       world,
       foragers: [a, b],
       rng: createRng(1),
       tracker: newTracker(),
-      config: MATE_CONFIG,
+      topology: DEFAULT_TOPOLOGY,
+      config: BIRTH_CONFIG,
       startId: 3,
     });
 
     sim.tick();
-    expect(sim.foragers.length).toBe(3);
+    expect(sim.foragers.length).toBe(3); // birthsPerTick = 1
     expect(sim.totalBirths).toBe(1);
-    expect(a.agent.mateCooldown).toBe(5);
-    expect(b.agent.mateCooldown).toBe(5);
+    expect(a.offspring + b.offspring).toBe(2); // one child, two parents credited
+  });
+
+  it("does not breed before parents reach the minimum parent age", () => {
+    const world = grasslandWorld(6, 6);
+    const young = [idleForager(1, 2, 2, 0), idleForager(2, 4, 4, 0)];
+    const sim = new Simulation({
+      world,
+      foragers: young,
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: { ...BIRTH_CONFIG, minParentAge: 100 },
+      startId: 3,
+    });
+
+    sim.tick();
+    expect(sim.totalBirths).toBe(0);
+    expect(sim.foragers.length).toBe(2);
+  });
+
+  it("stops breeding at the carrying capacity", () => {
+    const world = grasslandWorld(6, 6);
+    const pair = [idleForager(1, 2, 2, 60), idleForager(2, 4, 4, 60)];
+    const sim = new Simulation({
+      world,
+      foragers: pair,
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: { ...BIRTH_CONFIG, carryingCapacity: 2 },
+      startId: 3,
+    });
+
+    sim.tick();
+    expect(sim.foragers.length).toBe(2);
+    expect(sim.totalBirths).toBe(0);
+  });
+
+  it("lets a lone survivor reproduce by self-cross", () => {
+    const world = grasslandWorld(6, 6);
+    const sim = new Simulation({
+      world,
+      foragers: [idleForager(1, 2, 2, 60)],
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: BIRTH_CONFIG,
+      startId: 2,
+    });
+
+    sim.tick();
+    expect(sim.foragers.length).toBe(2);
+    expect(sim.totalBirths).toBe(1);
+  });
+
+  it("reseeds fresh foragers when the population dies out", () => {
+    const world = grasslandWorld(8, 8);
+    const sim = new Simulation({
+      world,
+      foragers: [],
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: { ...BIRTH_CONFIG, reseedCount: 5 },
+      startId: 1,
+    });
+
+    sim.tick();
+    expect(sim.foragers.length).toBe(5);
   });
 
   it("wraps an agent that steps off an edge to the opposite edge", () => {
@@ -147,47 +234,13 @@ describe("Simulation.tick", () => {
       foragers: [mover],
       rng: createRng(1),
       tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: { minParentAge: 999 }, // keep the birth manager out of this test
       startId: 2,
     });
 
     sim.tick();
     expect(mover.agent.x).toBe(0); // wrapped from x=5 (width 6) past the right edge
     expect(mover.agent.y).toBe(0);
-  });
-
-  it("lets two fertile agents mate across the seam", () => {
-    const world = grasslandWorld(6, 6);
-    const a = mateForager(1, 0, 2);
-    const b = mateForager(2, 5, 2); // adjacent to a across the left/right seam
-    const sim = new Simulation({
-      world,
-      foragers: [a, b],
-      rng: createRng(1),
-      tracker: newTracker(),
-      config: MATE_CONFIG,
-      startId: 3,
-    });
-
-    sim.tick();
-    expect(sim.totalBirths).toBe(1);
-    expect(sim.foragers.length).toBe(3);
-  });
-
-  it("does not exceed the maximum population", () => {
-    const world = grasslandWorld(6, 6);
-    const a = mateForager(1, 2, 2);
-    const b = mateForager(2, 3, 2);
-    const sim = new Simulation({
-      world,
-      foragers: [a, b],
-      rng: createRng(1),
-      tracker: newTracker(),
-      config: { ...MATE_CONFIG, maxPopulation: 2 },
-      startId: 3,
-    });
-
-    sim.tick();
-    expect(sim.foragers.length).toBe(2);
-    expect(sim.totalBirths).toBe(0);
   });
 });

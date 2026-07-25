@@ -15,8 +15,10 @@ export interface Forager {
   readonly brain: Brain;
   /** Accumulates fractional movement so `maxSpeed` yields whole tile steps. */
   moveAccumulator: number;
-  /** Set each tick from the brain's mate output; read by the mating pass. */
-  wantsMate: boolean;
+  /** Total food eaten over this forager's life (a fitness term). */
+  foodEaten: number;
+  /** Number of children this forager has parented (a fitness term). */
+  offspring: number;
 }
 
 export interface ForagerInit {
@@ -35,5 +37,13 @@ export function createForager(init: ForagerInit): Forager {
     y: init.y,
     metabolism: traits.metabolism,
   });
-  return { agent, genome: init.genome, traits, brain, moveAccumulator: 0, wantsMate: false };
+  return {
+    agent,
+    genome: init.genome,
+    traits,
+    brain,
+    moveAccumulator: 0,
+    foodEaten: 0,
+    offspring: 0,
+  };
 }
