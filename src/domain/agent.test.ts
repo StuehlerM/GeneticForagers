@@ -10,6 +10,7 @@ import {
   MAX_HEALTH,
   MAX_HYDRATION,
   metabolize,
+  spendEnergy,
 } from "./agent";
 import { type Tile, World } from "./world";
 
@@ -86,6 +87,20 @@ describe("metabolize", () => {
     metabolize(slow);
     metabolize(fast);
     expect(MAX_ENERGY - fast.energy).toBeGreaterThan(MAX_ENERGY - slow.energy);
+  });
+});
+
+describe("spendEnergy", () => {
+  it("reduces energy by the given amount", () => {
+    const agent = createAgent({ id: 1, x: 0, y: 0, energy: 50 });
+    spendEnergy(agent, 20);
+    expect(agent.energy).toBe(30);
+  });
+
+  it("never drives energy below zero", () => {
+    const agent = createAgent({ id: 1, x: 0, y: 0, energy: 5 });
+    spendEnergy(agent, 20);
+    expect(agent.energy).toBe(0);
   });
 });
 

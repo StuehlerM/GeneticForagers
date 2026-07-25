@@ -13,7 +13,6 @@ function forager(age: number, foodEaten: number, offspring: number): Forager {
       hydration: 0,
       health: 0,
       age,
-      mateCooldown: 0,
       metabolism: 1,
     },
     genome: { body: [], brain: { inputs: 0, outputs: 0, nodes: [], connections: [] } },

@@ -1,4 +1,4 @@
-import { type Agent, drink, eat, isDead, metabolize } from "./agent";
+import { type Agent, drink, eat, isDead, metabolize, spendEnergy } from "./agent";
 import { DEFAULT_TOPOLOGY, type Topology } from "./brain";
 import { createForager, type Forager } from "./forager";
 import {
@@ -28,6 +28,8 @@ const MAX_SPAWN_TRIES = 1000;
 export interface SimulationConfig {
   readonly actionThreshold: number;
   readonly moveThreshold: number;
+  /** Energy spent per tile moved, before body-size scaling. */
+  readonly moveEnergyCost: number;
   /** Minimum age before a forager may be chosen as a parent. */
   readonly minParentAge: number;
   /** Population the birth manager tops the world up toward. */
@@ -49,6 +51,7 @@ export interface SimulationConfig {
 export const DEFAULT_CONFIG: SimulationConfig = {
   actionThreshold: 0.5,
   moveThreshold: 0.3,
+  moveEnergyCost: 0.05,
   minParentAge: 50,
   carryingCapacity: 300,
   birthsPerTick: 2,
@@ -208,6 +211,7 @@ export class Simulation {
     if (dx === 0 && dy === 0) {
       return;
     }
+    const stepCost = this.config.moveEnergyCost * forager.traits.size;
     while (steps-- > 0) {
       const { x: nx, y: ny } = this.world.wrap(forager.agent.x + dx, forager.agent.y + dy);
       if (!this.world.isPassable(nx, ny)) {
@@ -215,6 +219,7 @@ export class Simulation {
       }
       forager.agent.x = nx;
       forager.agent.y = ny;
+      spendEnergy(forager.agent, stepCost);
     }
   }
 

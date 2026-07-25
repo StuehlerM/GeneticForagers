@@ -200,6 +200,32 @@ describe("Simulation.tick", () => {
     expect(sim.totalBirths).toBe(1);
   });
 
+  it("drains energy when a forager moves", () => {
+    const world = grasslandWorld(8, 8);
+    const build = (id: number, outputs: number[]): Forager => {
+      const genome = createRandomGenome(createRng(id), newTracker(), DEFAULT_TOPOLOGY);
+      const base = createForager({ id, x: 4, y: 4, genome });
+      base.agent.energy = 80;
+      return { ...base, brain: fixedBrain(outputs), traits: { ...base.traits, maxSpeed: 1, size: 1 } };
+    };
+    const mover = build(1, [1, 0, 0, 0, 0]); // drive +x
+    const idle = build(2, [0, 0, 0, 0, 0]); // stay put
+
+    const sim = new Simulation({
+      world,
+      foragers: [mover, idle],
+      rng: createRng(1),
+      tracker: newTracker(),
+      topology: DEFAULT_TOPOLOGY,
+      config: { minParentAge: 999, moveEnergyCost: 0.5 },
+      startId: 3,
+    });
+
+    sim.tick();
+    // The mover pays the move cost on top of base metabolism; the idle agent doesn't.
+    expect(mover.agent.energy).toBeLessThan(idle.agent.energy);
+  });
+
   it("tracks at least one species once a population exists", () => {
     const world = grasslandWorld(6, 6);
     const sim = new Simulation({

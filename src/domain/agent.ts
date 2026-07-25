@@ -30,7 +30,6 @@ export interface Agent {
   hydration: number;
   health: number;
   age: number;
-  mateCooldown: number;
   /** Multiplier on energy drain; part of the body genome (Step 5). */
   metabolism: number;
 }
@@ -43,7 +42,6 @@ export interface AgentInit {
   readonly hydration?: number;
   readonly health?: number;
   readonly age?: number;
-  readonly mateCooldown?: number;
   readonly metabolism?: number;
 }
 
@@ -56,13 +54,17 @@ export function createAgent(init: AgentInit): Agent {
     hydration: init.hydration ?? MAX_HYDRATION,
     health: init.health ?? MAX_HEALTH,
     age: init.age ?? 0,
-    mateCooldown: init.mateCooldown ?? 0,
     metabolism: init.metabolism ?? DEFAULT_METABOLISM,
   };
 }
 
 export function isDead(agent: Agent): boolean {
   return agent.health <= 0 || agent.age >= MAX_AGE;
+}
+
+/** Spends up to `amount` energy (e.g. the cost of moving or acting). */
+export function spendEnergy(agent: Agent, amount: number): void {
+  agent.energy = clampLow(agent.energy - amount);
 }
 
 /** Advances an agent's passive needs by one tick (drain, health, ageing). */
