@@ -173,6 +173,11 @@ export class Simulation {
     return this.species.count;
   }
 
+  /** Species id currently assigned to an agent, or undefined if unspeciated. */
+  speciesOf(agentId: number): number | undefined {
+    return this.species.assignmentOf(agentId);
+  }
+
   tick(): void {
     this.tracker.resetBatch();
     this.world.regrow();

@@ -4,6 +4,9 @@ import { createSimulation } from "./domain/simulation";
 import { StatsCollector } from "./domain/stats";
 import { Canvas2DRenderer } from "./render/canvasRenderer";
 import { type ChartSeries, drawChart } from "./render/chartRenderer";
+import { pickForagerAt } from "./render/inspector";
+import { drawInspector } from "./render/inspectorRenderer";
+import type { Forager } from "./domain/forager";
 
 const WORLD_WIDTH = 128;
 const WORLD_HEIGHT = 128;
@@ -11,6 +14,8 @@ const TILE_SIZE = 5;
 const POPULATION = 150;
 const CHART_WIDTH = 320;
 const CHART_HEIGHT = 120;
+const INSPECTOR_WIDTH = 320;
+const INSPECTOR_HEIGHT = 220;
 
 const CHART_SERIES: ChartSeries[] = [
   { key: "population", color: "#5ad15a", label: "population" },
@@ -34,6 +39,9 @@ const canvas = createCanvas();
 const renderer = new Canvas2DRenderer(canvas.getContext("2d")!, TILE_SIZE);
 const chartCanvas = createChartCanvas();
 const chartCtx = chartCanvas.getContext("2d")!;
+const inspectorCanvas = createInspectorCanvas();
+const inspectorCtx = inspectorCanvas.getContext("2d")!;
+let selectedId: number | undefined;
 const readout = mountUi();
 
 let lastTime = performance.now();
@@ -53,6 +61,8 @@ function frame(now: number): void {
 
   renderer.render(sim);
   drawChart(chartCtx, stats.history, CHART_SERIES);
+  const selected = selectedForager();
+  drawInspector(inspectorCtx, selected, selected ? sim.speciesOf(selected.agent.id) : undefined);
   updateReadout(readout);
   requestAnimationFrame(frame);
 }
@@ -80,6 +90,19 @@ function createChartCanvas(): HTMLCanvasElement {
   canvasEl.width = CHART_WIDTH;
   canvasEl.height = CHART_HEIGHT;
   return canvasEl;
+}
+
+function createInspectorCanvas(): HTMLCanvasElement {
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = INSPECTOR_WIDTH;
+  canvasEl.height = INSPECTOR_HEIGHT;
+  return canvasEl;
+}
+
+function selectedForager(): Forager | undefined {
+  return selectedId === undefined
+    ? undefined
+    : sim.foragers.find((f) => f.agent.id === selectedId);
 }
 
 function mountUi(): HTMLPreElement {
@@ -117,7 +140,14 @@ function mountUi(): HTMLPreElement {
 
   const readout = document.createElement("pre");
 
-  for (const el of [pauseButton, speed, seedInput, regenButton, readout, chartCanvas]) {
+  canvas.addEventListener("click", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const tileX = Math.floor((event.clientX - rect.left) / TILE_SIZE);
+    const tileY = Math.floor((event.clientY - rect.top) / TILE_SIZE);
+    selectedId = pickForagerAt(sim.foragers, tileX, tileY)?.agent.id;
+  });
+
+  for (const el of [pauseButton, speed, seedInput, regenButton, readout, chartCanvas, inspectorCanvas]) {
     panel.appendChild(el);
   }
   app.appendChild(canvas);
